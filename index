@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conference Budget Spin Wheel</title>
+    <!-- Use a reliable confetti library -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f0f4f8;
+            margin: 0;
+            font-family: 'Inter', sans-serif;
+            color: #334155;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .main-container {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            max-width: 500px;
+        }
+
+        .budget-display {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            padding: 10px 20px;
+            background-color: #cbd5e1;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .wheel-container {
+            position: relative;
+            width: 450px;
+            height: 450px;
+            border-radius: 50%;
+            border: 8px solid #cbd5e1;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+            background-color: #ffffff;
+        }
+
+        #spinCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transition: transform 5s cubic-bezier(0.25, 0.1, 0.25, 1);
+        }
+        
+        .spin-button {
+            margin-top: 40px;
+            padding: 16px 40px;
+            font-size: 20px;
+            font-weight: bold;
+            background-color: #10b981; /* Tailwind's emerald-500 */
+            color: white;
+            border: none;
+            border-radius: 9999px;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+            transition: background-color 0.3s ease, transform 0.1s ease;
+        }
+
+        .spin-button:hover:not(:disabled) {
+            background-color: #059669;
+            transform: translateY(-2px);
+        }
+
+        .spin-button:active:not(:disabled) {
+            transform: translateY(0);
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .spin-button:disabled {
+            background-color: #94a3b8;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        #result {
+            margin-top: 30px;
+            font-size: 28px;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .highlight-text {
+            color: #10b981;
+        }
+
+        .selected-users-list {
+            margin-top: 40px;
+            width: 100%;
+            max-width: 400px;
+            background-color: #e2e8f0;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .selected-users-list h2 {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #475569;
+        }
+
+        .selected-users-list ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .selected-users-list li {
+            background-color: #cbd5e1;
+            padding: 8px 16px;
+            border-radius: 9999px;
+            font-weight: bold;
+            color: #475569;
+        }
+
+        .last-chance-prompt {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 20px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .last-chance-button {
+            margin-top: 10px;
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #f59e0b;
+            color: white;
+            border: none;
+            border-radius: 9999px;
+            cursor: pointer;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+            transition: background-color 0.3s ease;
+        }
+
+        .last-chance-button:hover {
+            background-color: #d97706;
+        }
+
+        @media (max-width: 500px) {
+            .wheel-container {
+                width: 300px;
+                height: 300px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="main-container">
+        <div id="budgetDisplay" class="budget-display">
+            Remaining Budget: $20000
+        </div>
+        <div class="wheel-container">
+            <canvas id="spinCanvas" width="450" height="450"></canvas>
+        </div>
+        <button class="spin-button" id="spinButton">Spin the Wheel!</button>
+        <p id="result">Who will win?</p>
+        <div id="lastChancePrompt" class="last-chance-prompt">
+            <p>Budget exhausted! Do you want to allow one more user selection?</p>
+            <button id="lastChanceButton" class="last-chance-button">Yes, one more!</button>
+        </div>
+        <div class="selected-users-list">
+            <h2>Selected Users</h2>
+            <ul id="selectedUsersList">
+                <!-- Selected users will be added here -->
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // Data for the participants with random budgets and new names
+        const participants = [
+            { name: "John", budget: Math.floor(Math.random() * (1500 - 300 + 1)) + 300, color: "#f9a8d4" },
+            { name: "Maria", budget: Math.floor(Math.random() * (1500 - 300 + 1)) + 300, color: "#fcd34d" },
+            { name: "Carlos", budget: Math.floor(Math.random() * (1500 - 300 + 1)) + 300, color: "#60a5fa" },
+            { name: "Jessica", budget: Math.floor(Math.random() * (1500 - 300 + 1)) + 300, color: "#a5b4fc" },
+            { name: "Kevin", budget: Math.floor(Math.random() * (1500 - 300 + 1)) + 300, color: "#34d399" },
+            { name: "Sarah", budget: Math.floor(Math.random() * (1500 - 300 + 1)) + 300, color: "#fb7185" },
+            { name: "Michael", budget: Math.floor(Math.random() * (1500 - 300 + 1)) + 300, color: "#a78bfa" }
+        ];
+
+        // Get DOM elements
+        const spinCanvas = document.getElementById('spinCanvas');
+        const spinButton = document.getElementById('spinButton');
+        const resultDisplay = document.getElementById('result');
+        const budgetDisplay = document.getElementById('budgetDisplay');
+        const selectedUsersList = document.getElementById('selectedUsersList');
+        const lastChancePrompt = document.getElementById('lastChancePrompt');
+        const lastChanceButton = document.getElementById('lastChanceButton');
+        const ctx = spinCanvas.getContext('2d');
+
+        // State variables
+        let remainingBudget = 20000;
+        let spinning = false;
+        let selectedUsers = [];
+        let oneLastChanceGiven = false;
+        let finalConfettiShown = false;
+
+        // Function to trigger the confetti effect
+        function showConfetti() {
+            confetti({
+                particleCount: 150,
+                spread: 120,
+                origin: { y: 0.6 }
+            });
+        }
+        
+        // Function for a more dramatic confetti burst
+        function showMajorConfetti() {
+            confetti({
+                particleCount: 300,
+                spread: 180,
+                startVelocity: 60,
+                origin: { y: 0.6 }
+            });
+        }
+
+        // Function to update the budget display on the page and check for end conditions
+        function updateBudgetDisplay() {
+            budgetDisplay.textContent = `Remaining Budget: $${remainingBudget}`;
+            const availableParticipants = participants.filter(p => !selectedUsers.includes(p.name));
+            
+            if (availableParticipants.length === 0) {
+                spinButton.style.display = 'none';
+                lastChancePrompt.style.display = 'none';
+                resultDisplay.textContent = 'All selections have been completed!';
+                if (!finalConfettiShown) {
+                    showMajorConfetti();
+                    finalConfettiShown = true;
+                }
+            } else {
+                const highestBudget = Math.max(...availableParticipants.map(p => p.budget));
+                const lowestBudget = Math.min(...availableParticipants.map(p => p.budget));
+                
+                if (remainingBudget < highestBudget && remainingBudget >= lowestBudget) {
+                    spinButton.disabled = false;
+                    lastChancePrompt.style.display = 'flex';
+                    resultDisplay.textContent = `Budget is low. You can only select users with a budget of $${lowestBudget} or less.`;
+                } else if (remainingBudget < lowestBudget) {
+                    spinButton.style.display = 'none';
+                    lastChancePrompt.style.display = 'none';
+                    resultDisplay.textContent = 'Budget exhausted. All selections have been completed!';
+                    if (!finalConfettiShown) {
+                        showMajorConfetti();
+                        finalConfettiShown = true;
+                    }
+                } else {
+                    spinButton.disabled = false;
+                    spinButton.style.display = 'block';
+                    lastChancePrompt.style.display = 'none';
+                }
+            }
+        }
+
+        // Function to update the list of selected users
+        function updateSelectedUsersList() {
+            selectedUsersList.innerHTML = '';
+            selectedUsers.forEach(user => {
+                const li = document.createElement('li');
+                li.textContent = user;
+                selectedUsersList.appendChild(li);
+            });
+        }
+
+        // Function to draw the wheel segments and text
+        function drawWheel(currentParticipants, winnerName = null) {
+            ctx.clearRect(0, 0, spinCanvas.width, spinCanvas.height);
+            let currentAngle = 0;
+            const centerX = spinCanvas.width / 2;
+            const centerY = spinCanvas.height / 2;
+            const radius = Math.min(centerX, centerY) - 10;
+            const textRadius = radius * 0.7;
+            const numParticipants = currentParticipants.length;
+            const sliceAngle = (2 * Math.PI) / numParticipants;
+            const gapAngle = (2 * Math.PI) / 360;
+
+            if (numParticipants === 0) {
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+                ctx.closePath();
+                ctx.fillStyle = '#ccc';
+                ctx.fill();
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                return;
+            }
+
+            // Draw each pie segment
+            currentParticipants.forEach(p => {
+                const startAngle = currentAngle + gapAngle / 2;
+                const endAngle = currentAngle + sliceAngle - gapAngle / 2;
+
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+                ctx.closePath();
+
+                if (p.name === winnerName) {
+                    ctx.fillStyle = p.color;
+                    ctx.fill();
+                    ctx.strokeStyle = p.color;
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                } else {
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fill();
+                    ctx.strokeStyle = '#e2e8f0';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+
+                // Add the text for name
+                const midAngle = currentAngle + sliceAngle / 2;
+                const textX = centerX + textRadius * Math.cos(midAngle);
+                const textY = centerY + textRadius * Math.sin(midAngle);
+
+                ctx.save();
+                ctx.translate(textX, textY);
+                ctx.rotate(midAngle + Math.PI / 2);
+                ctx.textAlign = 'center';
+                
+                if (p.name === winnerName) {
+                    ctx.fillStyle = '#fff';
+                } else {
+                    ctx.fillStyle = '#334155';
+                }
+
+                ctx.font = 'bold 16px Arial';
+                ctx.fillText(p.name, 0, 0);
+                ctx.restore();
+
+                currentAngle += sliceAngle;
+            });
+            
+            // Draw the fixed arrow on the canvas
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            ctx.beginPath();
+            ctx.moveTo(0, -radius - 10);
+            ctx.lineTo(-10, -radius - 30);
+            ctx.lineTo(10, -radius - 30);
+            ctx.closePath();
+            ctx.fillStyle = '#dc2626';
+            ctx.fill();
+            ctx.restore();
+        }
+        
+        // Main function to handle a spin
+        function performSpin() {
+            const availableParticipants = participants.filter(p => !selectedUsers.includes(p.name));
+            if (spinning || availableParticipants.length === 0) return;
+
+            const affordableParticipants = availableParticipants.filter(p => p.budget <= remainingBudget);
+            
+            if (affordableParticipants.length === 0 && !oneLastChanceGiven) {
+                updateBudgetDisplay();
+                return;
+            }
+            
+            // Re-draw the wheel without a winner highlight before the spin starts
+            drawWheel(availableParticipants);
+            resultDisplay.textContent = 'Spinning...';
+
+            spinning = true;
+            spinButton.disabled = true;
+            lastChancePrompt.style.display = 'none';
+
+            const participantsForSpin = oneLastChanceGiven ? availableParticipants : affordableParticipants;
+            
+            const totalRevolutions = 5;
+            const randomDegree = Math.floor(Math.random() * 360);
+            const spinToDegree = (totalRevolutions * 360) + randomDegree;
+
+            spinCanvas.style.transition = 'transform 5s cubic-bezier(0.25, 0.1, 0.25, 1)';
+            spinCanvas.style.transform = `rotate(${spinToDegree}deg)`;
+
+            setTimeout(() => {
+                spinning = false;
+                spinButton.disabled = false; // Re-enable the button once the animation is done
+
+                let normalizedDegree = spinToDegree % 360;
+                let pointerAngle = (360 - normalizedDegree) + 90;
+                if (pointerAngle > 360) pointerAngle -= 360;
+
+                let angleCheck = 0;
+                let winner = null;
+                const numParticipants = participantsForSpin.length;
+                const sliceAngle = 360 / numParticipants;
+
+                for (let i = 0; i < participantsForSpin.length; i++) {
+                    const p = participantsForSpin[i];
+                    angleCheck += sliceAngle;
+                    
+                    if (pointerAngle <= angleCheck) {
+                        winner = p;
+                        break;
+                    }
+                }
+
+                if (!winner) {
+                    winner = participantsForSpin[0];
+                }
+
+                if (oneLastChanceGiven) {
+                    oneLastChanceGiven = false;
+                }
+
+                remainingBudget -= winner.budget;
+                resultDisplay.innerHTML = `🎉 The winner is <span class="highlight-text">${winner.name}</span> with a budget of $${winner.budget}! 🎉`;
+                selectedUsers.push(winner.name);
+                updateSelectedUsersList();
+                showConfetti();
+                
+                drawWheel(participantsForSpin, winner.name);
+                updateBudgetDisplay();
+
+                spinCanvas.style.transition = 'none';
+                spinCanvas.style.transform = `rotate(${normalizedDegree}deg)`;
+                
+            }, 5000);
+        }
+        
+        // Event listeners
+        spinButton.addEventListener('click', performSpin);
+        lastChanceButton.addEventListener('click', () => {
+            oneLastChanceGiven = true;
+            performSpin();
+        });
+
+        // Initial drawing and setup
+        drawWheel(participants);
+        updateBudgetDisplay();
+    </script>
+</body>
+</html>
